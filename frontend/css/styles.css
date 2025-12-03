@@ -1,5 +1,5 @@
 :root {
-    /* === PALETA CLÍNICA DE ALTO CONTRASTE === */
+    /* === PALETA de colores azul === */
     --primary: #0284c7;       /* Azul Fuerte */
     --primary-dark: #0c4a6e;  /* Azul marino */
     --primary-light: #e0f2fe; /* Fondo suave */
@@ -231,8 +231,8 @@ td { color: #334155 !important; border-bottom: 1px solid var(--luxury-border) !i
 
 
 /* ==================================================================
-   RESPONSIVIDAD TOTAL (CORRECCIÓN FINAL)
-   ================================================================== */
+   RESPONSIVIDAD TOTAL 
+================================================================== */
 
 /* 1. ELEMENTOS MÓVILES POR DEFECTO (Ocultos en PC) */
 .menu-toggle, .mobile-close { display: none !important; }
@@ -370,3 +370,4 @@ td { color: #334155 !important; border-bottom: 1px solid var(--luxury-border) !i
     0%, 100% { opacity: 0.5; }
     50% { opacity: 1; }
 }
+
