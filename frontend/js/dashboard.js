@@ -1,78 +1,77 @@
-// dashboard.js - Dashboard del Sistema de Gestión de Citas Médicas
-// Muestra resumen general y estadísticas del sistema
-
+// dashboard.js - Resumen General con Fotos de Doctores
 class Dashboard {
     static async cargar() {
-        activarMenu('dashboard');
-        actualizarTitulo('Resumen General');
+        if (typeof activarMenu === 'function') activarMenu('dashboard');
+        if (typeof actualizarTitulo === 'function') actualizarTitulo('Resumen General');
         
-        mostrarLoader();
+        mostrarLoader('Analizando datos...');
         
         try {
-            const [estadisticasDoctores, estadisticasEspecialidades, citasResponse, pacientesResponse, doctoresResponse] = await Promise.all([
-                EstadisticasService.getDoctores(),
-                EstadisticasService.getEspecialidades(),
+            const [citasRes, pacientesRes, doctoresRes] = await Promise.all([
                 CitasService.getAll(),
                 PacientesService.getAll(),
                 DoctoresService.getAll()
             ]);
 
-            const citas = citasResponse.data || [];
-            const pacientes = pacientesResponse.data || [];
-            const doctores = doctoresResponse.data || [];
+            const citas = citasRes.data || [];
+            const pacientes = pacientesRes.data || [];
+            const doctores = doctoresRes.data || [];
 
+            // Cálculos
             const citasPendientes = citas.filter(c => c.estado === 'programada').length;
-            const totalPacientes = pacientes.length;
-            const totalDoctores = doctores.length;
-            
-            // Obtener citas de hoy
-            const hoy = new Date().toISOString().split('T')[0];
-            const citasHoy = citas.filter(c => c.fecha === hoy).length;
-
-            // Obtener citas próximas 24 horas
             const citasProximas24h = this.obtenerCitasProximas24Horas(citas);
+            
+            // Enriquecer con Nombres y FOTOS
+            const citasCompletas = this.enriquecerCitas(citas, pacientes, doctores);
 
-            // Enriquecer citas con nombres reales
-            const citasConNombres = this.enriquecerCitasConNombres(citas, pacientes, doctores);
+            // Calcular Estadísticas (Top Doctor)
+            const stats = this.calcularEstadisticas(citas, doctores);
+
+            // Preparar HTML del Top Doctor (Foto o Ícono)
+            let topDoctorIcono = `<i class="ph ph-medal"></i>`;
+            let topDoctorEstilo = '';
+            
+            if (stats.topDoctorFoto) {
+                // Si tiene foto, la mostramos
+                topDoctorIcono = `<img src="${stats.topDoctorFoto}" alt="${stats.topDoctor}" style="width:100%; height:100%; object-fit:cover;">`;
+                topDoctorEstilo = 'padding:0; overflow:hidden; background:transparent; border:1px solid #e2e8f0;';
+            }
 
             const html = `
                 <div class="card-grid">
                     <div class="stat-card">
                         <i class="ph ph-calendar-check icon-bg"></i>
-                        <h3>Citas Pendientes</h3>
+                        <h3>Pendientes</h3>
                         <div class="value">${citasPendientes}</div>
-                        <small style="color:#94a3b8">Para atención inmediata</small>
                     </div>
                     <div class="stat-card">
-                        <i class="ph ph-users icon-bg" style="color:#10b981"></i>
-                        <h3>Pacientes Registrados</h3>
-                        <div class="value">${totalPacientes}</div>
-                        <small style="color:#94a3b8">Total en el sistema</small>
+                        <i class="ph ph-users icon-bg" style="color:var(--success)"></i>
+                        <h3>Pacientes</h3>
+                        <div class="value">${pacientes.length}</div>
                     </div>
                     <div class="stat-card">
-                        <i class="ph ph-user-focus icon-bg" style="color:#8b5cf6"></i>
-                        <h3>Doctores Activos</h3>
-                        <div class="value">${totalDoctores}</div>
-                        <small style="color:#94a3b8">Equipo médico</small>
+                        <i class="ph ph-user-focus icon-bg" style="color:var(--primary)"></i>
+                        <h3>Doctores</h3>
+                        <div class="value">${doctores.length}</div>
                     </div>
                     <div class="stat-card">
-                        <i class="ph ph-clock icon-bg" style="color:#f59e0b"></i>
-                        <h3>Próximas 24h</h3>
+                        <i class="ph ph-clock icon-bg" style="color:var(--warning)"></i>
+                        <h3>24 Horas</h3>
                         <div class="value">${citasProximas24h}</div>
-                        <small style="color:#94a3b8">Citas próximas</small>
                     </div>
                 </div>
                 
                 <div class="dashboard-sections">
                     <div class="table-container">
-                        <h3 style="margin-bottom:1rem; color:#e2e8f0">
-                            <i class="ph ph-clock-counter-clockwise"></i> Actividad Reciente
-                        </h3>
+                        <div class="section-header" style="margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem;">
+                            <h3 style="margin:0; font-size: 1.1rem; color: var(--text-main);">
+                                <i class="ph ph-clock-counter-clockwise"></i> Actividad Reciente
+                            </h3>
+                        </div>
                         <table>
                             <thead>
                                 <tr>
                                     <th>Fecha</th>
-                                    <th>Hora</th>
                                     <th>Paciente</th>
                                     <th>Doctor</th>
                                     <th>Estado</th>
@@ -82,29 +81,32 @@ class Dashboard {
                         </table>
                     </div>
                     
-                    <div class="stats-cards-mini">
-                        <div class="stat-mini-card specialty-card">
-                            <div class="stat-mini-icon">
-                                <i class="ph ph-heartbeat"></i>
-                            </div>
-                            <div class="stat-mini-content">
-                                <h4>Especialidad Top</h4>
-                                <div class="stat-mini-value">${estadisticasEspecialidades.data.especialidad || 'N/A'}</div>
-                                <div class="stat-mini-label">${estadisticasEspecialidades.data.totalCitas || 0} visitas programadas</div>
-                            </div>
-                            <div class="stat-mini-badge">🔥 Popular</div>
+                    <div class="dashboard-card">
+                        <div class="section-header" style="margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem;">
+                            <h3 style="margin:0; font-size: 1.1rem; color: var(--text-main);">
+                                <i class="ph ph-star"></i> Destacados
+                            </h3>
                         </div>
-                        
-                        <div class="stat-mini-card doctor-card">
-                            <div class="stat-mini-icon">
-                                <i class="ph ph-star"></i>
+                        <div class="stats-cards-mini">
+                            <div class="stat-mini-card specialty-card">
+                                <div class="stat-mini-icon"><i class="ph ph-heartbeat"></i></div>
+                                <div class="stat-mini-content">
+                                    <h4>Especialidad Top</h4>
+                                    <div class="stat-mini-value">${stats.topEspecialidad}</div>
+                                    <div class="stat-mini-label">${stats.citasEspecialidad} visitas</div>
+                                </div>
                             </div>
-                            <div class="stat-mini-content">
-                                <h4>Doctor Estrella</h4>
-                                <div class="stat-mini-value">${estadisticasDoctores.data.doctor || 'N/A'}</div>
-                                <div class="stat-mini-label">${estadisticasDoctores.data.totalCitas || 0} citas activas</div>
+                            
+                            <div class="stat-mini-card doctor-card">
+                                <div class="stat-mini-icon" style="${topDoctorEstilo}">
+                                    ${topDoctorIcono}
+                                </div>
+                                <div class="stat-mini-content">
+                                    <h4>Doctor Estrella</h4>
+                                    <div class="stat-mini-value">${stats.topDoctor}</div>
+                                    <div class="stat-mini-label">${stats.citasDoctor} citas realizadas</div>
+                                </div>
                             </div>
-                            <div class="stat-mini-badge">⭐ Top</div>
                         </div>
                     </div>
                 </div>
@@ -112,71 +114,119 @@ class Dashboard {
 
             document.getElementById('app-content').innerHTML = html;
             
-            // Llenar tabla resumen con nombres reales
-            const ultimas = citasConNombres.slice().reverse().slice(0, 5);
+            // Llenar tabla con mini avatares
+            const ultimas = citasCompletas.slice().reverse().slice(0, 5);
             const tbody = document.getElementById('tabla-resumen');
-            tbody.innerHTML = '';
             
-            ultimas.forEach(c => {
-                tbody.innerHTML += `
+            if (ultimas.length > 0) {
+                tbody.innerHTML = ultimas.map(c => {
+                    // Mini avatar para la tabla
+                    let avatarDoc = `<i class="ph ph-user"></i>`;
+                    if (c.doctorFoto) {
+                        avatarDoc = `<img src="${c.doctorFoto}" style="width:24px; height:24px; border-radius:50%; object-fit:cover; margin-right:8px; vertical-align:middle;">`;
+                    } else {
+                        // Si no hay foto, usamos la inicial (La "D" que mencionas)
+                        // Pero la hacemos pequeña y bonita
+                        avatarDoc = `<span style="display:inline-flex; width:24px; height:24px; background:#e0f2fe; color:#0284c7; border-radius:50%; align-items:center; justify-content:center; font-size:0.75rem; font-weight:bold; margin-right:8px;">${c.doctorNombre.charAt(0)}</span>`;
+                    }
+
+                    return `
                     <tr>
-                        <td>${c.fecha} <small style="color:#64748b">${c.hora}</small></td>
-                        <td>${c.pacienteNombre}</td>
-                        <td>${c.doctorNombre}</td>
-                        <td><span class="status-badge status-${c.estado}">${c.estado}</span></td>
+                        <td data-label="Fecha/Hora">
+                            <div style="font-weight:600">${c.fecha}</div>
+                            <small style="color:var(--text-muted)">${c.hora}</small>
+                        </td>
+                        <td data-label="Paciente">${c.pacienteNombre}</td>
+                        <td data-label="Doctor">
+                            <div style="display:flex; align-items:center;">
+                                ${avatarDoc}
+                                <span>${c.doctorNombre}</span>
+                            </div>
+                        </td>
+                        <td data-label="Estado"><span class="status-badge status-${c.estado}">${c.estado}</span></td>
                     </tr>
-                `;
-            });
+                `}).join('');
+            } else {
+                tbody.innerHTML = `<tr><td colspan="4" class="empty-state">No hay actividad reciente</td></tr>`;
+            }
+
+            ocultarLoader();
 
         } catch (error) {
-            mostrarError('Error al cargar el dashboard');
             console.error(error);
+            ocultarLoader();
+            mostrarError('Error al cargar el dashboard');
         }
     }
 
-    /**
-     * Obtiene el número de citas en las próximas 24 horas
-     */
+    // --- FUNCIONES AUXILIARES ---
+
     static obtenerCitasProximas24Horas(citas) {
         const ahora = new Date();
-        const en24Horas = new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
         const hoy = ahora.toISOString().split('T')[0];
-        
-        const citasProximas = citas.filter(cita => {
+        return citas.filter(cita => {
             if (cita.estado !== 'programada') return false;
-            
-            // Si la cita es hoy, verificar que la hora sea futura
             if (cita.fecha === hoy) {
-                const [horas, minutos] = cita.hora.split(':');
+                const [h, m] = cita.hora.split(':');
                 const horaCita = new Date();
-                horaCita.setHours(parseInt(horas), parseInt(minutos), 0, 0);
+                horaCita.setHours(h, m, 0, 0);
                 return horaCita > ahora;
             }
-            
-            // Si la cita es mañana, incluirla
             const manana = new Date(ahora);
             manana.setDate(manana.getDate() + 1);
-            const mananaStr = manana.toISOString().split('T')[0];
-            
-            return cita.fecha === mananaStr;
-        });
-        
-        return citasProximas.length;
+            return cita.fecha === manana.toISOString().split('T')[0];
+        }).length;
     }
 
-    /**
-     * Enriquece las citas con nombres reales de pacientes y doctores
-     */
-    static enriquecerCitasConNombres(citas, pacientes, doctores) {
+    // AHORA TAMBIÉN TRAE LA FOTO DEL DOCTOR
+    static enriquecerCitas(citas, pacientes, doctores) {
         return citas.map(cita => {
-            const paciente = pacientes.find(p => p.id === cita.pacienteId);
-            const doctor = doctores.find(d => d.id === cita.doctorId);
-            
+            const p = pacientes.find(x => x.id === cita.pacienteId);
+            const d = doctores.find(x => x.id === cita.doctorId);
             return {
                 ...cita,
-                pacienteNombre: paciente ? paciente.nombre : cita.pacienteId,
-                doctorNombre: doctor ? doctor.nombre : cita.doctorId
+                pacienteNombre: p ? p.nombre : 'Desconocido',
+                doctorNombre: d ? d.nombre : 'Desconocido',
+                doctorFoto: d ? d.fotoUrl : null // <--- ¡AQUÍ ESTÁ LA CLAVE!
             };
         });
+    }
+
+    static calcularEstadisticas(citas, doctores) {
+        if (citas.length === 0) return { topDoctor: 'N/A', topDoctorFoto: null, topEspecialidad: 'N/A', citasDoctor: 0, citasEspecialidad: 0 };
+
+        // 1. Contar citas por Doctor ID
+        const conteoDocs = {};
+        citas.forEach(c => { conteoDocs[c.doctorId] = (conteoDocs[c.doctorId] || 0) + 1; });
+        
+        let topDocId = null;
+        let maxCitasDoc = 0;
+        Object.entries(conteoDocs).forEach(([id, count]) => {
+            if (count > maxCitasDoc) { maxCitasDoc = count; topDocId = id; }
+        });
+        const doctorObj = doctores.find(d => d.id === topDocId);
+
+        // 2. Contar citas por Especialidad
+        const conteoEsp = {};
+        citas.forEach(c => {
+            const doc = doctores.find(d => d.id === c.doctorId);
+            if (doc && doc.especialidad) {
+                conteoEsp[doc.especialidad] = (conteoEsp[doc.especialidad] || 0) + 1;
+            }
+        });
+
+        let topEsp = 'N/A';
+        let maxCitasEsp = 0;
+        Object.entries(conteoEsp).forEach(([esp, count]) => {
+            if (count > maxCitasEsp) { maxCitasEsp = count; topEsp = esp; }
+        });
+
+        return {
+            topDoctor: doctorObj ? doctorObj.nombre : 'N/A',
+            topDoctorFoto: doctorObj ? doctorObj.fotoUrl : null, // <--- FOTO PARA EL DASHBOARD
+            citasDoctor: maxCitasDoc,
+            topEspecialidad: topEsp,
+            citasEspecialidad: maxCitasEsp
+        };
     }
 }
