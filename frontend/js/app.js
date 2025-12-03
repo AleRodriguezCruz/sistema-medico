@@ -1,338 +1,205 @@
 // app.js - Sistema de Gestión de Citas Médicas
-// Archivo principal que maneja la lógica de la interfaz de usuario
+// Lógica Global, Navegación y Utilidades
 
-/**
- * Muestra un loader (animación de carga) en el contenido principal
- * Se usa cuando se están cargando datos desde el servidor
- */
-function mostrarLoader() {
-    document.getElementById('app-content').innerHTML = `
-        <div class="loader-container">
-            <div class="spinner"></div>
-            <p>Cargando...</p>
+
+// ==========================================
+// 1. LOADER TIPO OVERLAY 
+// ==========================================
+
+function mostrarLoader(texto = 'Cargando...') {
+    const existente = document.querySelector('.loader-overlay');
+    if (existente) return;
+
+    // Crear la capa oscura transparente
+    const loader = document.createElement('div');
+    loader.className = 'loader-overlay';
+    
+    // Aquí definimos qué se ve (El corazón o un spinner)
+    loader.innerHTML = `
+        <div class="heartbeat-container">
+            <svg class="ecg-svg" viewBox="0 0 150 50" width="150" height="50">
+                <path class="ecg-line" d="M0,25 L30,25 L40,10 L50,40 L60,25 L150,25" />
+            </svg>
         </div>
+        <p class="loader-text">${texto}</p>
     `;
+    
+    // Lo agregamos al cuerpo del documento (flotando sobre todo)
+    document.body.appendChild(loader);
 }
 
-/**
- * Muestra un mensaje de éxito temporal (toast)
- * @param {string} mensaje - Texto a mostrar
- */
+function ocultarLoader() {
+    const loader = document.querySelector('.loader-overlay');
+    if (loader) {
+        // Efecto de desvanecer
+        loader.style.opacity = '0';
+        setTimeout(() => {
+            if (loader.parentNode) loader.parentNode.removeChild(loader);
+        }, 300);
+    }
+}
 function mostrarExito(mensaje) {
     mostrarToast(mensaje, 'success');
 }
 
-/**
- * Muestra un mensaje de error temporal (toast)
- * @param {string} mensaje - Texto a mostrar
- */
 function mostrarError(mensaje) {
     mostrarToast(mensaje, 'error');
 }
 
-/**
- * Crea y muestra un mensaje temporal (toast) en la interfaz
- * @param {string} mensaje - Texto a mostrar
- * @param {string} tipo - Tipo de mensaje: 'success' o 'error'
- */
-function mostrarToast(mensaje, tipo = 'success') {
-    const toastContainer = document.getElementById('toast-container');
+function mostrarToast(mensaje, tipo) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
     const toast = document.createElement('div');
     toast.className = `toast ${tipo}`;
     
-    // Elegir icono según el tipo de mensaje
-    const icon = tipo === 'success' ? 'ph-check-circle' : 'ph-warning-circle';
+    // Iconos Phosphor
+    const iconClass = tipo === 'success' ? 'ph-check-circle' : 'ph-warning-circle';
     
     toast.innerHTML = `
-        <i class="ph ${icon}"></i>
+        <i class="ph ${iconClass}" style="font-size:1.2rem"></i>
         <span>${mensaje}</span>
     `;
     
-    toastContainer.appendChild(toast);
+    container.appendChild(toast);
     
-    // Eliminar automáticamente después de 5 segundos
-    setTimeout(() => toast.remove(), 5000);
+    // Auto-eliminar a los 3 segundos
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
-/**
- * Abre un modal (ventana emergente) con título y contenido
- * @param {string} titulo - Título del modal
- * @param {string} contenido - HTML del contenido del modal
- */
-function abrirModal(titulo, contenido) {
-    document.getElementById('modal-title').textContent = titulo;
-    document.getElementById('modal-body').innerHTML = contenido;
-    document.getElementById('modal').style.display = 'flex';
+// ==========================================
+// 2. SISTEMA DE MODALES
+// ==========================================
+
+function abrirModal(titulo, html) {
+    const modal = document.getElementById('modal');
+    const titleEl = document.getElementById('modal-title');
+    const bodyEl = document.getElementById('modal-body');
+
+    if (modal && titleEl && bodyEl) {
+        titleEl.textContent = titulo;
+        bodyEl.innerHTML = html;
+        modal.style.display = 'flex';
+    }
 }
 
-/**
- * Cierra el modal activo
- */
 function cerrarModal() {
-    document.getElementById('modal').style.display = 'none';
+    const modal = document.getElementById('modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
 }
 
-/**
- * Activa el elemento del menú correspondiente a la sección actual
- * @param {string} seccion - ID de la sección a activar
- */
-function activarMenu(seccion) {
+// ==========================================
+// 3. NAVEGACIÓN Y MENÚ MÓVIL
+// ==========================================
+
+function navegar(seccion) {
+    console.log('Navegando a:', seccion);
+
+    // A. Actualizar clase 'active' en el menú
     document.querySelectorAll('.menu li').forEach(item => {
         item.classList.remove('active');
-        if (item.getAttribute('data-section') === seccion) {
-            item.classList.add('active');
-        }
     });
+    
+    // Buscar por ID o por atributo data-section (soporta ambos casos)
+    const activeItem = document.getElementById(`nav-${seccion}`) || 
+                       document.querySelector(`li[data-section="${seccion}"]`);
+                       
+    if (activeItem) activeItem.classList.add('active');
+
+    // B. Cerrar menú móvil si está abierto (RESPONSIVIDAD)
+    if (window.innerWidth <= 1024) {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.querySelector('.sidebar-overlay');
+        
+        if (sidebar) sidebar.classList.remove('active');
+        if (overlay) overlay.classList.remove('active');
+    }
+
+    // C. Cargar el controlador correspondiente
+    try {
+        switch(seccion) {
+            case 'dashboard':
+                if (typeof Dashboard !== 'undefined') Dashboard.cargar();
+                break;
+            case 'pacientes':
+                if (typeof PacientesManager !== 'undefined') PacientesManager.cargar();
+                break;
+            case 'doctores':
+                if (typeof DoctoresManager !== 'undefined') DoctoresManager.cargar();
+                break;
+            case 'citas':
+                if (typeof CitasManager !== 'undefined') CitasManager.cargar();
+                break;
+            default:
+                console.warn('Sección desconocida:', seccion);
+        }
+    } catch (error) {
+        console.error('Error al navegar:', error);
+        mostrarError('Error al cargar la sección ' + seccion);
+    }
 }
 
-/**
- * Actualiza el título de la página actual
- * @param {string} titulo - Nuevo título
- */
+function toggleMenu() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.querySelector('.sidebar-overlay');
+    
+    if (sidebar) sidebar.classList.toggle('active');
+    if (overlay) overlay.classList.toggle('active');
+}
+
+// Helpers globales para usar en formularios
+function activarMenu(seccion) {
+    // Helper visual para mantener consistencia
+    const item = document.getElementById(`nav-${seccion}`);
+    if (item) item.classList.add('active');
+}
+
 function actualizarTitulo(titulo) {
-    document.getElementById('page-title').textContent = titulo;
+    const titleEl = document.getElementById('page-title');
+    if (titleEl) titleEl.textContent = titulo;
 }
 
-/**
- * Configura los event listeners para la navegación del menú
- */
-function configurarNavegacion() {
-    document.querySelectorAll('.menu li').forEach(item => {
+// ==========================================
+// 4. INICIALIZACIÓN
+// ==========================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('App inicializada');
+
+    // Listener para cerrar modal con botón X
+    const closeBtn = document.getElementById('close-modal');
+    if (closeBtn) closeBtn.addEventListener('click', cerrarModal);
+
+    // Listener para cerrar modal clicando fuera
+    const modal = document.getElementById('modal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) cerrarModal();
+        });
+    }
+
+    // Listener para links del menú (si usan data-section en vez de onclick)
+    document.querySelectorAll('.menu li[data-section]').forEach(item => {
         item.addEventListener('click', function() {
-            const seccion = this.getAttribute('data-section');
-            navegarA(seccion);
+            navegar(this.getAttribute('data-section'));
         });
     });
-}
 
-/**
- * Navega a una sección específica de la aplicación
- * @param {string} seccion - Sección a la que navegar
- */
-function navegarA(seccion) {
-    console.log('🔄 Navegando a:', seccion);
-    
-    // Switch que determina qué sección cargar
-    switch(seccion) {
-        case 'dashboard':
-            if (typeof Dashboard !== 'undefined') {
-                Dashboard.cargar();
-            } else {
-                console.error('Dashboard no está definido');
-                mostrarError('Error al cargar el dashboard');
-            }
-            break;
-            
-        case 'pacientes':
-            if (typeof PacientesManager !== 'undefined') {
-                PacientesManager.cargar();
-            } else {
-                console.error('PacientesManager no está definido');
-                mostrarError('Error al cargar pacientes');
-            }
-            break;
-            
-        case 'doctores':
-            if (typeof DoctoresManager !== 'undefined') {
-                DoctoresManager.cargar();
-            } else {
-                console.error('DoctoresManager no está definido');
-                mostrarError('Error al cargar doctores');
-            }
-            break;
-            
-        case 'citas':
-            if (typeof CitasManager !== 'undefined') {
-                CitasManager.cargar();
-            } else {
-                console.error('CitasManager no está definido');
-                mostrarError('Error al cargar citas');
-            }
-            break;
-            
-        default:
-            console.error('Sección no reconocida:', seccion);
-    }
-}
-
-/**
- * Función helper para obtener el valor de un elemento del DOM por su ID
- * @param {string} id - ID del elemento
- * @returns {string} Valor del elemento
- */
-function val(id) {
-    const element = document.getElementById(id);
-    return element ? element.value : '';
-}
-
-/**
- * Función helper para establecer el valor de un elemento del DOM
- * @param {string} id - ID del elemento
- * @param {string} value - Valor a establecer
- */
-function setVal(id, value) {
-    const element = document.getElementById(id);
-    if (element) {
-        element.value = value;
-    }
-}
-
-/**
- * Valida un formato de email
- * @param {string} email - Email a validar
- * @returns {boolean} True si el email es válido
- */
-function validarEmail(email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-}
-
-/**
- * Valida un número de teléfono
- * @param {string} telefono - Teléfono a validar
- * @returns {boolean} True si el teléfono es válido
- */
-function validarTelefono(telefono) {
-    const telefonoRegex = /^\d{10,}$/;
-    return telefonoRegex.test(telefono.replace(/\D/g, ''));
-}
-
-/**
- * Formatea una fecha para mostrarla de manera legible
- * @param {string} fechaString - Fecha en formato string
- * @returns {string} Fecha formateada
- */
-function formatearFecha(fechaString) {
-    const opciones = { year: 'numeric', month: 'long', day: 'numeric' };
-    return new Date(fechaString).toLocaleDateString('es-ES', opciones);
-}
-
-/**
- * Obtiene el día de la semana a partir de una fecha
- * @param {string} fechaString - Fecha en formato string
- * @returns {string} Nombre del día de la semana
- */
-function obtenerDiaSemana(fechaString) {
-    const dias = ['Domingo', 'Lunes', 'Martés', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const fecha = new Date(fechaString);
-    return dias[fecha.getDay()];
-}
-
-// ===== EVENT LISTENERS GLOBALES =====
-
-/**
- * Inicializa la aplicación cuando el DOM está listo
- */
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 Inicializando aplicación...');
-    
-    // Configurar cierre del modal
-    document.getElementById('close-modal').addEventListener('click', cerrarModal);
-    
-    // Cerrar modal al hacer clic fuera del contenido
-    document.getElementById('modal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            cerrarModal();
-        }
-    });
-    
-    // Configurar navegación
-    configurarNavegacion();
-    
-    // Cargar dashboard por defecto
+    // Carga inicial
     if (typeof Dashboard !== 'undefined') {
         Dashboard.cargar();
     } else {
-        console.error('No se pudo cargar el dashboard inicial');
-        document.getElementById('app-content').innerHTML = `
-            <div class="error-state">
-                <h2>Error de carga</h2>
-                <p>No se pudieron cargar los módulos de la aplicación.</p>
-                <button onclick="location.reload()" class="btn-primary">Recargar</button>
-            </div>
-        `;
+        console.error('Dashboard.js no cargado');
     }
-    
-    console.log('✅ Aplicación inicializada correctamente');
 });
 
-/**
- * Maneja errores globales no capturados
- */
+// Captura de errores globales para depuración
 window.addEventListener('error', function(e) {
-    console.error('💥 Error global:', e.error);
-    mostrarError('Ha ocurrido un error inesperado');
+    console.error('Error global detectado:', e.message);
+    // No mostramos alerta al usuario para no molestar, solo consola
 });
-
-/**
- * Función para exportar datos (ejemplo para estudiantes)
- * @param {Array} datos - Datos a exportar
- * @param {string} nombreArchivo - Nombre del archivo
- * @param {string} tipo - Tipo de exportación: 'json' o 'csv'
- */
-function exportarDatos(datos, nombreArchivo, tipo = 'json') {
-    let contenido, mimeType, extension;
-    
-    if (tipo === 'json') {
-        contenido = JSON.stringify(datos, null, 2);
-        mimeType = 'application/json';
-        extension = 'json';
-    } else if (tipo === 'csv') {
-        // Implementación básica de CSV
-        const headers = Object.keys(datos[0] || {});
-        const filas = datos.map(fila => 
-            headers.map(header => `"${fila[header] || ''}"`).join(',')
-        );
-        contenido = [headers.join(','), ...filas].join('\n');
-        mimeType = 'text/csv';
-        extension = 'csv';
-    }
-    
-    const blob = new Blob([contenido], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${nombreArchivo}.${extension}`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    mostrarExito(`Datos exportados como ${tipo.toUpperCase()}`);
-}
-
-/**
- * Función para importar datos (ejemplo para estudiantes)
- * @param {File} archivo - Archivo a importar
- * @param {Function} callback - Función a ejecutar con los datos importados
- */
-function importarDatos(archivo, callback) {
-    const lector = new FileReader();
-    
-    lector.onload = function(e) {
-        try {
-            let datos;
-            if (archivo.type === 'application/json') {
-                datos = JSON.parse(e.target.result);
-            } else if (archivo.type === 'text/csv') {
-                // Implementación básica de CSV a JSON
-                const lineas = e.target.result.split('\n');
-                const headers = lineas[0].split(',').map(h => h.replace(/"/g, ''));
-                datos = lineas.slice(1).map(linea => {
-                    const valores = linea.split(',').map(v => v.replace(/"/g, ''));
-                    const objeto = {};
-                    headers.forEach((header, index) => {
-                        objeto[header] = valores[index];
-                    });
-                    return objeto;
-                });
-            }
-            
-            callback(datos);
-            mostrarExito('Datos importados correctamente');
-        } catch (error) {
-            console.error('Error al importar datos:', error);
-            mostrarError('Error al importar el archivo');
-        }
-    };
-    
-    lector.readAsText(archivo);
-}
