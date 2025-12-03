@@ -1,18 +1,16 @@
-// doctores.js - Gestión de Doctores
-// Maneja la interfaz y lógica para gestionar doctores
-
+// doctores.js - Gestión de Doctores y Agenda
 class DoctoresManager {
+    static agendaCache = []; // Cache para filtrar agenda sin recargar
+
     static async cargar() {
-        activarMenu('doctores');
-        actualizarTitulo('Equipo Médico');
+        if (typeof activarMenu === 'function') activarMenu('doctores');
+        if (typeof actualizarTitulo === 'function') actualizarTitulo('Equipo Médico');
         
-        mostrarLoader();
+        mostrarLoader('Cargando doctores...');
         
         try {
             const response = await DoctoresService.getAll();
             const doctores = response.data || [];
-            
-            // Obtener especialidades únicas para el filtro
             const especialidades = [...new Set(doctores.map(d => d.especialidad))];
             
             const html = `
@@ -20,9 +18,7 @@ class DoctoresManager {
                     <div class="filters-container">
                         <select id="filter-especialidad" onchange="DoctoresManager.filtrar()">
                             <option value="">Todas las especialidades</option>
-                            ${especialidades.map(esp => 
-                                `<option value="${esp}">${esp}</option>`
-                            ).join('')}
+                            ${especialidades.map(esp => `<option value="${esp}">${esp}</option>`).join('')}
                         </select>
                         <div class="search-container">
                             <input type="text" id="search-doctores" placeholder="Buscar doctor..." onkeyup="DoctoresManager.filtrar()">
@@ -30,286 +26,293 @@ class DoctoresManager {
                         </div>
                     </div>
                     <button class="btn-primary" onclick="DoctoresManager.abrirFormulario()">
-                        <i class="ph-bold ph-plus"></i> Registrar Doctor
+                        <i class="ph-bold ph-plus"></i> Nuevo Doctor
                     </button>
                 </div>
-                <div class="card-grid" id="doctores-grid">
-                    ${doctores.length > 0 ? 
-                        doctores.map(doctor => this.crearTarjetaDoctor(doctor)).join('') :
-                        '<div class="empty-state">No hay doctores registrados</div>'
-                    }
+                
+                <div class="card-grid" id="grid-doctores">
+                    ${this.generarTarjetasDoctores(doctores)}
                 </div>
             `;
-
-            document.getElementById('app-content').innerHTML = html;
             
+            document.getElementById('app-content').innerHTML = html;
+            ocultarLoader();
+
         } catch (error) {
-            mostrarError('Error al cargar doctores');
             console.error(error);
+            ocultarLoader();
+            mostrarError('Error al cargar doctores');
         }
     }
 
-    static crearTarjetaDoctor(doctor) {
-        return `
-            <div class="stat-card doctor-card-item" data-especialidad="${doctor.especialidad}">
-                <div style="position:absolute; top:15px; right:15px; color:#475569">
-                    <i class="ph-duotone ph-first-aid" style="font-size:2rem"></i>
+    static generarTarjetasDoctores(doctores) {
+        if (doctores.length === 0) return '<div class="empty-state">No hay doctores registrados</div>';
+
+        return doctores.map(doc => {
+            // Lógica para mostrar foto o inicial
+            const avatarContent = doc.fotoUrl 
+                ? `<img src="${doc.fotoUrl}" alt="${doc.nombre}" style="width:100%; height:100%; object-fit:cover;">`
+                : doc.nombre.charAt(0);
+            
+            const avatarStyle = doc.fotoUrl ? 'padding:0; background:transparent;' : '';
+
+            return `
+            <div class="stat-card doctor-card-item">
+                <div class="doctor-header" style="display:flex; align-items:center; gap:1rem; margin-bottom:1rem;">
+                    <div class="avatar" style="width:60px; height:60px; font-size:1.5rem; overflow:hidden; ${avatarStyle}">
+                        ${avatarContent}
+                    </div>
+                    <div>
+                        <h3 style="margin:0; font-size:1.1rem;">${doc.nombre}</h3>
+                        <div class="status-badge" style="background:#ecfdf5; color:#059669; font-size:0.75rem; margin-top:0.25rem; display:inline-block;">Activo</div>
+                    </div>
                 </div>
-                <h3 class="doctor-especialidad">${doctor.especialidad}</h3>
-                <div class="value doctor-nombre" style="font-size:1.1rem; margin:10px 0">${doctor.nombre}</div>
-                <div style="display:flex; align-items:center; gap:5px; color:#64748b; font-size:0.9rem">
-                    <i class="ph ph-clock"></i> ${doctor.horarioInicio} - ${doctor.horarioFin}
+                
+                <p style="color:var(--text-muted); margin-bottom:0.5rem; font-weight:600;">${doc.especialidad}</p>
+                
+                <div style="font-size:0.9rem; color:var(--secondary); margin-bottom:1rem; background:#f8fafc; padding:0.5rem; border-radius:8px;">
+                    <i class="ph ph-clock"></i> ${doc.horarioInicio} - ${doc.horarioFin}
                 </div>
-                <div style="margin-top:10px; display:flex; gap:4px; flex-wrap:wrap">
-                    ${doctor.diasDisponibles.map(dia => 
-                        `<span style="background:rgba(30, 41, 59, 0.8); color:#94a3b8; padding:4px 8px; border-radius:6px; font-size:0.75rem; border:1px solid var(--luxury-border)">
-                            ${dia.substring(0,3)}
-                        </span>`
-                    ).join('')}
-                </div>
-                <div style="margin-top:15px; display:flex; gap:5px">
-                    <button class="btn-secondary" style="flex:1" onclick="DoctoresManager.verAgenda('${doctor.id}', '${doctor.nombre}')">
+                
+                <div class="doctor-actions" style="margin-top:auto; display:flex; gap:0.5rem;">
+                    <button class="btn-secondary" style="flex:1" onclick="DoctoresManager.verAgenda('${doc.id}')">
                         <i class="ph ph-calendar"></i> Agenda
                     </button>
-                    <button class="btn-secondary" onclick="DoctoresManager.editar('${doctor.id}')">
+                    <button class="btn-secondary" onclick="DoctoresManager.abrirFormulario('${doc.id}')">
                         <i class="ph ph-pencil"></i>
                     </button>
                 </div>
             </div>
-        `;
+        `}).join('');
     }
 
-    static filtrar() {
-        const input = document.getElementById('search-doctores');
-        const especialidadFilter = document.getElementById('filter-especialidad').value;
-        const searchText = input.value.toLowerCase();
-        const cards = document.querySelectorAll('.doctor-card-item');
+    // ==========================================
+    // AGENDA CON FILTROS Y RESPONSIVIDAD
+    // ==========================================
+
+    static async verAgenda(id) {
+        mostrarLoader('Cargando agenda...');
         
-        cards.forEach(card => {
-            const nombre = card.querySelector('.doctor-nombre').textContent.toLowerCase();
-            const especialidad = card.querySelector('.doctor-especialidad').textContent;
-            const cardText = card.textContent.toLowerCase();
-            
-            const coincideTexto = searchText === '' || nombre.includes(searchText) || cardText.includes(searchText);
-            const coincideEspecialidad = especialidadFilter === '' || especialidad === especialidadFilter;
-            
-            card.style.display = (coincideTexto && coincideEspecialidad) ? '' : 'none';
-        });
-    }
-
-    static async verAgenda(id, nombre) {
         try {
-            const response = await DoctoresService.getAgenda(id);
-            const agenda = response.data || [];
+            const [doctorRes, agendaRes] = await Promise.all([
+                DoctoresService.getById(id),
+                DoctoresService.getAgenda(id)
+            ]);
             
-            // Estadísticas de la agenda
-            const totalCitas = agenda.length;
-            const citasProgramadas = agenda.filter(c => c.estado === 'programada').length;
-            const citasCanceladas = agenda.filter(c => c.estado === 'cancelada').length;
-            const citasCompletadas = agenda.filter(c => c.estado === 'completada').length;
+            const doctor = doctorRes.data;
+            this.agendaCache = agendaRes.data || [];
             
-            let html = `
-                <div class="agenda-header" style="margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--luxury-border);">
-                    <h4 style="color: var(--primary-light); margin-bottom: 0.5rem;">📅 Agenda de ${nombre}</h4>
-                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
-                        <div style="background: rgba(37, 99, 235, 0.1); padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid rgba(37, 99, 235, 0.3);">
-                            <div style="font-size: 0.8rem; color: #94a3b8;">Total</div>
-                            <div style="font-size: 1.2rem; font-weight: bold; color: #e2e8f0;">${totalCitas}</div>
-                        </div>
-                        <div style="background: rgba(16, 185, 129, 0.1); padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3);">
-                            <div style="font-size: 0.8rem; color: #94a3b8;">Programadas</div>
-                            <div style="font-size: 1.2rem; font-weight: bold; color: #34d399;">${citasProgramadas}</div>
-                        </div>
-                        <div style="background: rgba(239, 68, 68, 0.1); padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3);">
-                            <div style="font-size: 0.8rem; color: #94a3b8;">Canceladas</div>
-                            <div style="font-size: 1.2rem; font-weight: bold; color: #fca5a5;">${citasCanceladas}</div>
-                        </div>
-                    </div>
+            this.agendaCache.sort((a, b) => {
+                if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+                return a.hora.localeCompare(b.hora);
+            });
+
+            const html = `
+                <div class="doctor-info-container" style="display:block; margin-bottom: 1.5rem;">
+                    <h4 class="doctor-info-title">Dr. ${doctor.nombre}</h4>
+                    <p class="doctor-info-value">${doctor.especialidad}</p>
+                    <small>Horario: ${doctor.horarioInicio} - ${doctor.horarioFin}</small>
                 </div>
-                <div class="agenda-container">
-            `;
-            
-            if (agenda.length === 0) {
-                html += `
-                    <div class="agenda-empty">
-                        <i class="ph ph-calendar-blank"></i>
-                        <h4>No hay citas programadas</h4>
-                        <p style="color: #64748b; margin-top: 0.5rem;">Este doctor no tiene citas en su agenda.</p>
-                    </div>
-                `;
-            } else {
-                html += `
+
+                <div class="agenda-filters">
+                    <button class="filter-btn active" onclick="DoctoresManager.filtrarAgenda('hoy', this)">Hoy</button>
+                    <button class="filter-btn" onclick="DoctoresManager.filtrarAgenda('semana', this)">Esta Semana</button>
+                    <button class="filter-btn" onclick="DoctoresManager.filtrarAgenda('proximos', this)">Próximos 7 días</button>
+                    <button class="filter-btn" onclick="DoctoresManager.filtrarAgenda('todos', this)">Ver Todo</button>
+                </div>
+
+                <div class="table-container" style="max-height: 400px; overflow-y: auto;">
                     <table class="agenda-table">
                         <thead>
                             <tr>
                                 <th>Fecha</th>
                                 <th>Hora</th>
                                 <th>Paciente</th>
-                                <th>Motivo</th>
                                 <th>Estado</th>
                             </tr>
                         </thead>
-                        <tbody>
-                `;
-                
-                // Ordenar agenda por fecha y hora (más recientes primero)
-                const agendaOrdenada = agenda.sort((a, b) => {
-                    const fechaA = new Date(a.fecha + 'T' + a.hora);
-                    const fechaB = new Date(b.fecha + 'T' + b.hora);
-                    return fechaB - fechaA; // Orden descendente (más reciente primero)
-                });
-                
-                agendaOrdenada.forEach(cita => {
-                    html += `
-                        <tr>
-                            <td>
-                                <strong>${cita.fecha}</strong>
-                            </td>
-                            <td>${cita.hora}</td>
-                            <td>${cita.pacienteId}</td>
-                            <td>
-                                <span style="display: block; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" 
-                                      title="${cita.motivo}">
-                                    ${cita.motivo}
-                                </span>
-                            </td>
-                            <td>
-                                <span class="agenda-status ${cita.estado}">${cita.estado}</span>
-                            </td>
-                        </tr>
-                    `;
-                });
-                
-                html += `</tbody></table>`;
-            }
+                        <tbody id="agenda-body"></tbody>
+                    </table>
+                </div>
+            `;
+
+            ocultarLoader(); // IMPORTANTE: Ocultar loader antes de mostrar modal
+            abrirModal('Agenda Médica', html);
             
-            html += `</div>`;
-            
-            abrirModal(`📅 Agenda Completa: ${nombre}`, html);
-            
+            // Cargar vista inicial
+            this.filtrarAgenda('hoy', document.querySelector('.filter-btn')); 
+
         } catch (error) {
+            console.error(error);
+            ocultarLoader();
             mostrarError('Error al cargar la agenda');
-            console.error(error);
         }
     }
 
-    static abrirFormulario(doctor = null) {
-        const esEdicion = doctor !== null;
-        const titulo = esEdicion ? 'Editar Doctor' : 'Nuevo Doctor';
-        
-        const diasHTML = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'].map(d => 
-            `<label>
-                <input type="checkbox" name="dias" value="${d}" ${esEdicion && doctor.diasDisponibles.includes(d) ? 'checked' : ''}>
-                ${d}
-            </label>`
-        ).join('');
-        
-        const html = `
-            <form id="form-doctor" onsubmit="DoctoresManager.guardar(event, ${esEdicion ? `'${doctor.id}'` : 'null'})">
-                <div class="form-group">
-                    <label for="docNombre">Nombre completo</label>
-                    <input type="text" id="docNombre" value="${esEdicion ? doctor.nombre : ''}" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="docEsp">Especialidad</label>
-                    <input type="text" id="docEsp" value="${esEdicion ? doctor.especialidad : ''}" required>
-                </div>
-                
-                <div style="display:flex; gap:10px">
-                    <div class="form-group" style="flex:1">
-                        <label for="ini">Horario de inicio</label>
-                        <input type="time" id="ini" value="${esEdicion ? doctor.horarioInicio : ''}" required>
-                    </div>
-                    <div class="form-group" style="flex:1">
-                        <label for="fin">Horario de fin</label>
-                        <input type="time" id="fin" value="${esEdicion ? doctor.horarioFin : ''}" required>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label>Días disponibles</label>
-                    <div class="checkbox-group">
-                        ${diasHTML}
-                    </div>
-                </div>
-                
-                <button type="submit" class="btn-primary" style="width:100%">
-                    ${esEdicion ? 'Actualizar' : 'Registrar'} Doctor
-                </button>
-            </form>
-        `;
+    static filtrarAgenda(filtro, btnElement) {
+        if (btnElement) {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btnElement.classList.add('active');
+        }
 
-        abrirModal(titulo, html);
+        const tbody = document.getElementById('agenda-body');
+        const hoy = new Date();
+        const hoyStr = hoy.toISOString().split('T')[0];
+        
+        const citasFiltradas = this.agendaCache.filter(cita => {
+            const fechaCita = new Date(cita.fecha + 'T00:00:00');
+            
+            switch(filtro) {
+                case 'hoy': return cita.fecha === hoyStr;
+                case 'semana':
+                    const diaSemana = hoy.getDay() || 7;
+                    const lunes = new Date(hoy);
+                    lunes.setHours(0,0,0,0);
+                    lunes.setDate(hoy.getDate() - diaSemana + 1);
+                    const domingo = new Date(lunes);
+                    domingo.setDate(lunes.getDate() + 6);
+                    domingo.setHours(23,59,59,999);
+                    return fechaCita >= lunes && fechaCita <= domingo;
+                case 'proximos':
+                    const limite = new Date(hoy);
+                    limite.setDate(hoy.getDate() + 7);
+                    const ft = fechaCita.getTime();
+                    const ht = new Date(hoyStr).getTime();
+                    return ft >= ht && ft <= limite.getTime();
+                default: return true;
+            }
+        });
+
+        if (citasFiltradas.length > 0) {
+            tbody.innerHTML = citasFiltradas.map(cita => `
+                <tr>
+                    <td data-label="Fecha">${cita.fecha}</td>
+                    <td data-label="Hora" style="font-weight: 600;">${cita.hora}</td>
+                    <td data-label="Paciente">${cita.pacienteNombre || 'Paciente Registrado'}</td>
+                    <td data-label="Estado">
+                        <span class="status-badge status-${cita.estado.toLowerCase()}">
+                            ${cita.estado}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+        } else {
+            let mensaje = filtro === 'hoy' ? 'No hay citas para hoy' : 'No hay citas en este rango';
+            tbody.innerHTML = `<tr><td colspan="4" class="agenda-empty"><i class="ph ph-calendar-slash"></i><p>${mensaje}</p></td></tr>`;
+        }
     }
 
-    static async editar(id) {
+    // ==========================================
+    // FORMULARIO DE DOCTORES (Con foto)
+    // ==========================================
+
+    static async abrirFormulario(id = null) {
+        mostrarLoader('Cargando formulario...');
         try {
-            const response = await DoctoresService.getById(id);
-            this.abrirFormulario(response.data);
+            let doc = {};
+            if(id) {
+                const res = await DoctoresService.getById(id);
+                doc = res.data;
+            }
+            ocultarLoader();
+
+            const html = `
+                 <form id="form-doctor" onsubmit="event.preventDefault(); DoctoresManager.guardar('${id || ''}')">
+                    <div class="form-group">
+                        <label>Nombre Completo</label>
+                        <input type="text" name="nombre" value="${doc.nombre || ''}" required>
+                    </div>
+                    
+                    <div class="dashboard-sections" style="gap:1rem; margin-bottom:0">
+                        <div class="form-group">
+                            <label>Especialidad</label>
+                            <input type="text" name="especialidad" list="lista-especialidades" value="${doc.especialidad || ''}" required>
+                            <datalist id="lista-especialidades">
+                                <option value="Medicina General"><option value="Cardiología"><option value="Pediatría"><option value="Dermatología">
+                            </datalist>
+                        </div>
+                        
+                    </div>
+
+                    <div class="dashboard-sections" style="gap:1rem; margin-bottom:0">
+                        <div class="form-group">
+                            <label>Horario Inicio</label>
+                            <input type="time" name="horarioInicio" id="ini" value="${doc.horarioInicio || ''}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Horario Fin</label>
+                            <input type="time" name="horarioFin" id="fin" value="${doc.horarioFin || ''}" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Días Disponibles</label>
+                        <div class="checkbox-group">
+                            ${['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'].map(dia => `
+                                <label>
+                                    <input type="checkbox" name="dias" value="${dia}" 
+                                    ${doc.diasDisponibles && doc.diasDisponibles.includes(dia) ? 'checked' : ''}> 
+                                    ${dia.substring(0,3)}
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn-primary">Guardar Doctor</button>
+                    </div>
+                </form>
+            `;
+            abrirModal(id ? 'Editar Doctor' : 'Nuevo Doctor', html);
+            
         } catch (error) {
-            mostrarError('Error al cargar datos del doctor');
-            console.error(error);
+            ocultarLoader();
+            mostrarError('Error al cargar datos');
         }
     }
 
-    static async guardar(event, id = null) {
-        event.preventDefault();
-        
-        const dias = Array.from(document.querySelectorAll('input[name="dias"]:checked')).map(c => c.value);
-        
-        if (!dias.length) {
-            mostrarError('Selecciona al menos un día disponible');
-            return;
-        }
-
-        const formData = {
-            nombre: document.getElementById('docNombre').value,
-            especialidad: document.getElementById('docEsp').value,
-            horarioInicio: document.getElementById('ini').value,
-            horarioFin: document.getElementById('fin').value,
+    static async guardar(id) {
+        const dias = Array.from(document.querySelectorAll('input[name="dias"]:checked')).map(cb => cb.value);
+        const data = {
+            nombre: document.querySelector('[name="nombre"]').value,
+            especialidad: document.querySelector('[name="especialidad"]').value,
+            fotoUrl: document.querySelector('[name="fotoUrl"]').value,
+            horarioInicio: document.querySelector('[name="horarioInicio"]').value,
+            horarioFin: document.querySelector('[name="horarioFin"]').value,
             diasDisponibles: dias
         };
 
-        // Validaciones del cliente
-        if (!this.validarFormulario(formData)) {
-            return;
-        }
+        if(data.horarioInicio >= data.horarioFin) return mostrarError('Horario inválido');
+        if(dias.length === 0) return mostrarError('Selecciona al menos un día');
 
         try {
-            let response;
-            if (id) {
-                response = await DoctoresService.update(id, formData);
-            } else {
-                response = await DoctoresService.create(formData);
-            }
-
-            if (response.success) {
+            mostrarLoader('Guardando...');
+            const res = id ? await DoctoresService.update(id, data) : await DoctoresService.create(data);
+            ocultarLoader();
+            
+            if(res.success) {
                 cerrarModal();
                 this.cargar();
-                mostrarExito(id ? 'Doctor actualizado correctamente' : 'Doctor registrado correctamente');
+                mostrarExito('Doctor guardado');
             } else {
-                mostrarError(response.message || 'Error al guardar doctor');
+                mostrarError(res.message);
             }
-        } catch (error) {
-            mostrarError('Error al guardar doctor');
-            console.error(error);
+        } catch(e) { 
+            ocultarLoader();
+            mostrarError('Error al guardar'); 
         }
     }
 
-    static validarFormulario(data) {
-        // Validar horarios
-        if (data.horarioInicio >= data.horarioFin) {
-            mostrarError('El horario de inicio debe ser anterior al horario de fin');
-            return false;
-        }
-
-        // Validar días disponibles
-        if (data.diasDisponibles.length === 0) {
-            mostrarError('Selecciona al menos un día disponible');
-            return false;
-        }
-
-        return true;
+    static filtrar() {
+        const texto = document.getElementById('search-doctores').value.toLowerCase();
+        const esp = document.getElementById('filter-especialidad').value.toLowerCase();
+        const cards = document.querySelectorAll('.doctor-card-item');
+        
+        cards.forEach(card => {
+            const nombre = card.querySelector('h3').innerText.toLowerCase();
+            const especialidad = card.querySelector('p').innerText.toLowerCase();
+            const matchTexto = nombre.includes(texto);
+            const matchEsp = esp === '' || especialidad === esp;
+            card.style.display = (matchTexto && matchEsp) ? 'block' : 'none';
+        });
     }
 }
