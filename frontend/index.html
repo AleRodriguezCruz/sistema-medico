@@ -4,38 +4,52 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MediGest | Sistema Médico</title>
+    
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/components.css">
 </head>
 <body>
     <div class="dashboard-container">
-        <nav class="sidebar">
+        
+        <div class="sidebar-overlay" onclick="toggleMenu()"></div>
+
+        <nav class="sidebar" id="sidebar">
             <div class="logo">
-                <i class="ph ph-heartbeat"></i> MediGest
+                <span style="display:flex; align-items:center; gap:10px;">
+                    <i class="ph ph-heartbeat" style="color:var(--primary)"></i> MediGest
+                </span>
+                
+                <i class="ph ph-x mobile-close" onclick="toggleMenu()" 
+                   style="cursor:pointer; margin-left:auto; display:none; font-size:1.2rem;"></i>
             </div>
+            
             <ul class="menu">
-                <li data-section="dashboard" class="active">
+                <li onclick="navegar('dashboard')" class="active" id="nav-dashboard">
                     <i class="ph ph-pulse"></i> Resumen
                 </li>
-                <li data-section="pacientes">
+                <li onclick="navegar('pacientes')" id="nav-pacientes">
                     <i class="ph ph-users-three"></i> Pacientes
                 </li>
-                <li data-section="doctores">
+                <li onclick="navegar('doctores')" id="nav-doctores">
                     <i class="ph ph-stethoscope"></i> Doctores
                 </li>
-                <li data-section="citas">
+                <li onclick="navegar('citas')" id="nav-citas">
                     <i class="ph ph-calendar-heart"></i> Agenda
                 </li>
             </ul>
+            
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="avatar"><i class="ph ph-user-circle"></i></div>
                     <div style="line-height: 1.3;">
                         <strong>Sistema Médico</strong><br>
-                        <small>Acceso público</small>
+                        <small style="color:var(--secondary)">Acceso Admin</small>
                     </div>
                 </div>
             </div>
@@ -43,10 +57,15 @@
 
         <main class="main-content">
             <header>
+                <button class="menu-toggle" onclick="toggleMenu()">
+                    <i class="ph ph-list"></i>
+                </button>
+
                 <h2 id="page-title">Resumen General</h2>
+                
                 <div class="header-user">
                     <div class="header-badge">
-                        <i class="ph ph-monitor"></i> Modo Demo
+                        <i class="ph ph-circle" style="color:#10b981; font-size:0.6em; margin-right:5px;"></i> En línea
                     </div>
                 </div>
             </header>
@@ -57,8 +76,12 @@
 
     <div id="modal" class="modal">
         <div class="modal-content">
-            <span class="close-btn" id="close-modal"><i class="ph ph-x"></i></span>
-            <h3 id="modal-title">Título</h3>
+            <div class="modal-header">
+                <h3 id="modal-title">Título</h3>
+                <span class="close-btn" id="close-modal" onclick="cerrarModal()">
+                    <i class="ph ph-x"></i>
+                </span>
+            </div>
             <div id="modal-body"></div>
         </div>
     </div>
@@ -71,5 +94,14 @@
     <script src="js/doctores.js"></script>
     <script src="js/citas.js"></script>
     <script src="js/app.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Cargar dashboard inicial 
+            if(typeof Dashboard !== 'undefined') {
+                Dashboard.cargar();
+            }
+        });
+    </script>
 </body>
 </html>
