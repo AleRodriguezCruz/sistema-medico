@@ -1,6 +1,7 @@
 // ==============================================================
 // 🎓 PROYECTO FINAL: SISTEMA DE GESTIÓN MÉDICA
 // 🖥️ BACKEND (Server.js)
+// AUTOR:ALEJANDRA RODRIGUEZ DE LA CRUZ
 // 📝 Descripción: Servidor API RESTful hecho con Express
 // ==============================================================
 
@@ -234,3 +235,4 @@ app.listen(PORT, () => {
     console.log(`✅ Servidor Médico listo en http://localhost:${PORT}`);
     console.log('📝 Presiona Ctrl+C para detenerlo');
 });
+
