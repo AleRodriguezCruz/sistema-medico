@@ -1,8 +1,10 @@
-// pacientes.js - Gestión de Pacientes
-// Maneja el listado, creación, edición y eliminación de pacientes
+// pacientes.js - Control de pacientes (CRUD)
 
 class PacientesManager {
+    
+    // Carga la lista de pacientes desde el servidor
     static async cargar() {
+        // actualiza el menú y título si existen las funciones
         if (typeof activarMenu === 'function') activarMenu('pacientes');
         if (typeof actualizarTitulo === 'function') actualizarTitulo('Directorio de Pacientes');
         
@@ -12,6 +14,7 @@ class PacientesManager {
             const response = await PacientesService.getAll();
             const pacientes = response.data || [];
             
+            // armar el html de la tabla
             const html = `
                 <div class="section-header">
                     <div class="search-container">
@@ -44,17 +47,16 @@ class PacientesManager {
             `;
             
             document.getElementById('app-content').innerHTML = html;
-            
-            // IMPORTANTE: Ocultar loader al terminar
             ocultarLoader();
 
         } catch (error) {
             console.error(error);
-            ocultarLoader(); // Ocultar loader si hay error
-            mostrarError('Error al cargar pacientes');
+            ocultarLoader();
+            mostrarError('No se pudo cargar la lista');
         }
     }
 
+    // genera el html de cada fila
     static crearFilaPaciente(p) {
         return `
             <tr class="paciente-row">
@@ -83,6 +85,7 @@ class PacientesManager {
         `;
     }
 
+    // buscador simple en cliente
     static filtrar() {
         const texto = document.getElementById('search-pacientes').value.toLowerCase();
         const filas = document.querySelectorAll('.paciente-row');
@@ -91,6 +94,7 @@ class PacientesManager {
             const nombre = fila.querySelector('td[data-label="Paciente"]').innerText.toLowerCase();
             const email = fila.querySelector('td[data-label="Contacto"]').innerText.toLowerCase();
             
+            // mostrar u ocultar según coincidencia
             if (nombre.includes(texto) || email.includes(texto)) {
                 fila.style.display = '';
             } else {
@@ -99,11 +103,13 @@ class PacientesManager {
         });
     }
 
+    // abre el modal (sirve para crear o editar si trae id)
     static async abrirFormulario(id = null) {
-        mostrarLoader('Cargando formulario...');
+        mostrarLoader('Cargando...');
         try {
             let paciente = {};
             
+            // si es edicion, traigo los datos antes
             if (id) {
                 const response = await PacientesService.getById(id);
                 if (response.success) {
@@ -113,7 +119,7 @@ class PacientesManager {
                 }
             }
             
-            ocultarLoader(); // Ocultar antes de mostrar modal
+            ocultarLoader();
 
             const html = `
                 <form id="form-paciente" onsubmit="event.preventDefault(); PacientesManager.guardar('${id || ''}')">
@@ -125,7 +131,7 @@ class PacientesManager {
                     <div class="dashboard-sections" style="gap:1rem; margin-bottom:0;">
                         <div class="form-group">
                             <label>Edad *</label>
-                            <input type="number" name="edad" value="${paciente.edad || ''}" required min="0" max="120">
+                            <input type="number" name="edad" value="${paciente.edad || ''}" required min="1" max="120">
                         </div>
                         <div class="form-group">
                             <label>Teléfono *</label>
@@ -155,22 +161,36 @@ class PacientesManager {
         }
     }
 
+    // envia los datos al backend
     static async guardar(id) {
         const form = document.getElementById('form-paciente');
-        const formData = {
-            nombre: form.querySelector('[name="nombre"]').value,
-            edad: form.querySelector('[name="edad"]').value,
-            telefono: form.querySelector('[name="telefono"]').value,
-            email: form.querySelector('[name="email"]').value
-        };
+        
+        // obtengo los valores
+        const nombre = form.querySelector('[name="nombre"]').value;
+        const edadTexto = form.querySelector('[name="edad"]').value;
+        const telefono = form.querySelector('[name="telefono"]').value;
+        const email = form.querySelector('[name="email"]').value;
 
-        // Validaciones Manuales
-        if (!formData.nombre || !formData.email || !formData.telefono) {
-            return mostrarError('Todos los campos son obligatorios');
+        // validaciones basicas
+        if (!nombre || !email || !telefono) {
+            return mostrarError('Faltan campos obligatorios');
         }
-        if (formData.telefono.length < 10) {
+        if (telefono.length < 10) {
             return mostrarError('El teléfono debe tener 10 dígitos');
         }
+
+        // --- CORRECCIÓN EDAD ---
+        const edadNum = parseInt(edadTexto);
+        if (edadNum <= 0 || isNaN(edadNum)) {
+            return mostrarError('La edad debe ser mayor a 0');
+        }
+
+        const formData = {
+            nombre: nombre,
+            edad: edadNum,
+            telefono: telefono,
+            email: email
+        };
 
         try {
             mostrarLoader('Guardando...');
@@ -186,8 +206,8 @@ class PacientesManager {
 
             if (response.success) {
                 cerrarModal();
-                this.cargar();
-                mostrarExito(id ? 'Paciente actualizado' : 'Paciente registrado');
+                this.cargar(); // recargar tabla
+                mostrarExito(id ? 'Datos actualizados' : 'Paciente registrado');
             } else {
                 mostrarError(response.message || 'Error al guardar');
             }
@@ -198,12 +218,12 @@ class PacientesManager {
         }
     }
 
+    // borrar paciente
     static async eliminar(id) {
-        if (confirm('¿Estás seguro de eliminar este paciente? Se perderá su historial.')) {
+        if (confirm('¿Seguro que quieres eliminar este paciente?')) {
             try {
                 mostrarLoader('Eliminando...');
-                // Nota: Asegúrate de tener PacientesService.delete(id) en tu api.js
-                // Si no existe, usa request directo:
+                // uso request directo si no tengo el metodo en el servicio
                 const response = await ApiService.request(`/pacientes/${id}`, { method: 'DELETE' });
                 
                 ocultarLoader();
@@ -212,12 +232,12 @@ class PacientesManager {
                     this.cargar();
                     mostrarExito('Paciente eliminado');
                 } else {
-                    mostrarError(response.message || 'Error al eliminar');
+                    mostrarError(response.message || 'No se pudo eliminar');
                 }
             } catch (error) {
                 console.error(error);
                 ocultarLoader();
-                mostrarError('Error al eliminar paciente');
+                mostrarError('Ocurrió un error al eliminar');
             }
         }
     }
